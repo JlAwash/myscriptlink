@@ -1,0 +1,75 @@
+// ==UserScript==
+// @name         CX Hunter Helper
+// @include      *hunter.eu-aces.amazon.dev/scanner/index.html*
+// @version      0.4
+// @require      https://drive.corp.amazon.com/view/joergri@/Bibos/jquery.cookie.js
+// @downloadURL  https://drive.corp.amazon.com/view/joergri@/my%20projekts/IB%20Cover%20Sheet/IB%20Cover%20Sheet.user.js
+// @grant        GM_xmlhttpRequest
+// @author       joergri
+// ==/UserScript==
+
+var fcname = $.cookie("warehouseId")
+
+
+$(document).keypress(function(event){
+    var keycode = (event.keyCode ? event.keyCode : event.which);
+    if(keycode == 13){
+        setTimeout(function() {
+            $('.X1').remove()
+            FindASIN()
+        }, 1000); // Timeout für X ms
+    }
+
+    function FindASIN(){
+        var FUD_ASINs = $('.asin')
+        $(FUD_ASINs).each(function (Index, Item) {
+            var ASIN = $(this).text()
+            each_ASIN(ASIN)
+            })
+        //each_ASIN('X001C9Q5CX')
+    }
+
+    function each_ASIN(ThisASIN){
+        var FC_Research_URL = 'http://fcresearch-eu.aka.amazon.com/'+ fcname +'/results/product?s=' + ThisASIN
+        console.log(FC_Research_URL)
+
+        GM_xmlhttpRequest({
+            method: "GET",
+            url: FC_Research_URL,
+            headers: {'Accept':'application/atom+xml,application/xml,text/xml'},
+            onload: function() {
+                var Response = $(this.responseText)
+                var Bild = $('img:nth-child(1)',Response).attr('src')
+                var ASIN = '', FNSku = '', Titel = ''
+
+                $('tbody:nth-child(1) > tr',Response).each(function () {
+                    var first_Colmn = $(this).find('th:nth-child(1)').text().trim();
+                    var second_Colmn = $(this).find('td:nth-child(2)' ).text().trim();
+                    if(first_Colmn === 'ASIN'){ ASIN = second_Colmn}
+                    if(first_Colmn === 'FNSku'){ FNSku = second_Colmn}
+                    if(first_Colmn === 'Titel' || first_Colmn === 'Title'){ Titel = second_Colmn}
+                })
+
+                var mycss = ''
+                mycss += '<style type="text/css">';
+                mycss += '.UserCell{height: 150px; width: 150px; border: 1px solid; }';
+                mycss += '.UserCell_1{height: 150px; width: 150px; border: 1px solid; }';
+                mycss += '.UserCell_2 { width: 1500px; text-align: left; border: 1px solid; font-size: 20px; }';
+                mycss += '</style>';
+                $(mycss).appendTo('head');
+
+                var myhtml = ''
+                myhtml +='<table class="X1"><tr>'
+                myhtml += '<th class="UserCell_1" rowspan="3"><div><img id="image" src="'+ Bild +'" style="height: 100%; width: 100%;" alt="No image loaded"/></div></th>'
+                myhtml += '<th class="UserCell_2" >'
+                myhtml +=  '<div >ASIN: <a href="http://fcresearch-eu.aka.amazon.com/'+ fcname +'/results?s='+ ASIN +'">'+ ASIN +'</a></div>'
+                myhtml +=  '<div>FNSku: <a href="http://fcresearch-eu.aka.amazon.com/'+ fcname +'/results?s='+ FNSku +'">'+ FNSku +'</a></div>'
+                myhtml +=  '<div>Titel: <a href="https://www.amazon.de/gp/product/'+ ASIN +'">'+ Titel +'</a></div>'
+                myhtml += '</th>'
+                myhtml +='</tr></table>'
+                $('.asins').append(myhtml)
+            }
+        });
+
+    }
+});

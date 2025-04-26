@@ -1,0 +1,59 @@
+// ==UserScript==
+// @name         Favicons
+// @namespace    http://tampermonkey.net/
+// @version      1.0
+// @description  For a comfort work
+// @author       popolekf
+// @match        *://aft-qt-eu.aka.amazon.com/app/moveitems*
+// @match        *://aft-poirot-website-dub.dub.proxy.amazon.com/*
+// @match        *://fcresearch-eu.aka.amazon.com/BRQ2/results*
+// @match        *://aft-qt-eu.aka.amazon.com/app/edititems*
+// @match        *://aft-qt-eu.aka.amazon.com/app/ioprint*
+// @match        *://tx-b-hierarchy-dub.dub.proxy.amazon.com/bindHierarchy*
+// @match        *://fc-spaceman-idrt-dub.aka.amazon.com/idrt/show_prime_recommendation_multimode*
+// @grant        none
+// ==/UserScript==
+
+(function() {
+    'use strict';
+
+    const customFavicons = {
+        "/app/moveitems": "https://i.imgur.com/PyCMkZt.png",
+        "/app/ioprint": "https://i.imgur.com/MsXlKtF.png",
+        "/app/edititems": "https://i.imgur.com/FSsIueA.png",
+        "tx-b-hierarchy-dub.dub.proxy.amazon.com": "https://i.imgur.com/OWd6Y7h.png",
+        "fc-spaceman-idrt-dub.aka.amazon.com": "https://i.imgur.com/zhB8QeU.png",
+        "aft-poirot-website-dub.dub.proxy.amazon.com": "https://i.imgur.com/R3DMaaz.png",
+        "fcresearch-eu.aka.amazon.com": "https://i.imgur.com/l3Lfjhj.png"
+    };
+
+    const currentPath = window.location.pathname;
+    const currentDomain = window.location.hostname;
+
+    let faviconUrl = null;
+    if (currentDomain === "aft-qt-eu.aka.amazon.com") {
+        if (currentPath.includes("/app/moveitems")) {
+            faviconUrl = customFavicons["/app/moveitems"];
+        } else if (currentPath.includes("/app/edititems")) {
+            faviconUrl = customFavicons["/app/edititems"];
+        } else if (currentPath.includes("/app/ioprint")) {
+            faviconUrl = customFavicons["/app/ioprint"];
+        }
+    } else if (customFavicons[currentDomain]) {
+        faviconUrl = customFavicons[currentDomain];
+    }
+
+    if (faviconUrl) {
+        setFavicon(faviconUrl);
+    }
+
+    function setFavicon(iconUrl) {
+        let link = document.querySelector("link[rel~='icon']");
+        if (!link) {
+            link = document.createElement('link');
+            link.rel = 'icon';
+            document.head.appendChild(link);
+        }
+        link.href = iconUrl;
+    }
+})();

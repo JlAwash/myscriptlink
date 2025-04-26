@@ -1,0 +1,448 @@
+// ==UserScript==
+// @name         FCResearch analyze container inventory
+// @version      24
+// @description  displays info about a container's contents in FCResearch. Also displays inventory for child containers
+// @author       mojordaq
+// @updateURL    https://axzile.corp.amazon.com/-/carthamus/download_script/pallet-inventory.user.js
+// @downloadURL  https://axzile.corp.amazon.com/-/carthamus/download_script/pallet-inventory.user.js
+// @match        *fcresearch-eu.aka.amazon.com/*/results?s=*
+// @require      https://drive-render.corp.amazon.com/view/mojordaq@/js%20src%20files/jquery-3.6.0.js
+// @grant        GM_xmlhttpRequest
+// @connect      *
+// ==/UserScript==
+
+/*eslint-env jquery*/
+
+function waitForKeyElements(query, callback, stopAfterFound, elem) {
+    var o, r;
+    (o = void 0 === elem ? $(query) : $(elem).contents().find(query)) && o.length > 0 ? (r = !0, o.each(function() {
+        var e = $(this);
+        e.data("alreadyFound") || false || (callback(e) ? r = false : e.data("alreadyFound", true))
+    })) :
+    r = false;
+    var l = waitForKeyElements.controlObj || {},
+        i = query.replace(/[^\w]/g, "_"),
+        c = l[i];
+    r && stopAfterFound && c ? (
+        clearInterval(c),
+        delete l[i]
+    ) : c || (
+        c = setInterval(
+            function() {
+                waitForKeyElements(query, callback, stopAfterFound, elem);
+            },
+            1000
+        ),
+        l[i] = c
+    );
+    waitForKeyElements.controlObj = l;
+}
+var scrollcount = 0;
+var count = 0, curr = 0;
+var rows;
+int();
+function int(){
+    var invStatus = getStatus("inventory");
+    var hierStatus = getStatus("container-hierarchy");
+    if(invStatus === "failed" || hierStatus === "failed"){
+        return;
+    }
+    if(["none", "found"].includes(invStatus) && ["none", "found"].includes(hierStatus)){
+        // waitForKeyElements("#table-container-hierarchy", function(){
+        var button = document.createElement("button");
+        button.style.background = "blue";
+        /*
+#flex {
+display: flex;
+/* Optional, if you want the DIVs 100% width:
+flex-direction: row;
+}
+#flex > #a { order: 2; }
+#flex > #b { order: 1; }
+#flex > #c { order: 3; }
+            */
+        button.style.order = 4;
+        button.style.color = "white";
+        button.innerHTML = "analyze container";
+        button.onclick = function(){
+            document.getElementById("search").focus();
+            scroll();
+            button.remove();
+        }
+        document.getElementById("inventory-nav").append(button);
+        document.getElementById("inventory-nav").className = "";
+        document.getElementById("inventory-nav").style.display = "flex";
+        document.getElementById("inventory-nav").style["flex-direction"] = "row";
+        // },true);
+        return;
+    }
+    window.setTimeout(int, 500);
+}//interval to wait for tabs to load
+function getStatus(div) {
+    try {
+        return (document.querySelector(`[id=${div}-status]`).className === "loading failure") ?
+            "failed" : ((getComputedStyle(document.querySelector(`[id=${div}-status] > i`)).display === "block") ?
+                        "loading" : "none");
+    } catch (e) {
+        if(!!document.querySelector(`[id=${div}-status]`)){
+            return "found";
+        }
+        return "loading";
+    }
+}//get status of tab
+var hier;
+function init(){
+    var b = document.getElementById("table-container-hierarchy");
+    rows = [];
+    if(!!b){
+        b = b.firstChild.nextElementSibling.rows;
+        count = b.length;
+        // console.log("count:",count);
+        for(var i = 0; i < b.length; i++){
+            var e = b[i].firstChild;
+            show(e);
+        }
+    }else{
+        show();
+        return;
+    }
+}//process all rows for container hierarchy tab
+function scroll(callback = init){
+    // console.log("scrolling");
+    // console.log("scrolling");
+    var elem = document.getElementById("table-container-hierarchy_info");
+    if(!elem){
+        scroll2(callback);
+        // console.log("scrolling 2");
+        return;
+    }
+    try{
+        hier = elem.textContent.split(" ");
+    }catch(error){
+        // console.error(error);
+        if(scrollcount > 10){
+            console.log("scroll failed");
+            return;
+        }
+        // console.log("scroll failed... retrying");
+        scrollcount++;
+        window.setTimeout(()=>{scroll(callback)}, 1000);
+        return;
+    }
+    if (parseInt(hier[3]) < parseInt(hier[5]) && parseInt(hier[3]) < 1000) {
+        var el = document.getElementById("table-container-hierarchy").parentElement;
+        el.scrollTop = el.scrollHeight;
+        window.setTimeout(()=>{scroll(callback)}, 1);
+    } else {
+        document.getElementById("table-container-hierarchy").parentElement.scrollTop = 0;
+        scroll2(callback);
+    }
+}
+function scroll2(callback) {
+    // console.log("scrolling 2");
+    if(!document.getElementById("table-inventory_info")){
+        // console.log("a");
+        // console.log("inv no exist");
+        callback();
+        return;
+    }
+    try{
+        // console.log("b");
+        var a = document.getElementById("table-inventory_info").textContent.split(" ");
+        if (parseInt(a[3]) < parseInt(a[5]) && parseInt(a[3]) < 1000) {
+            // console.log("c");
+            var el = document.getElementById("table-inventory").parentElement;
+            el.scrollTop = el.scrollHeight;
+            window.setTimeout(()=>{scroll2(callback)}, 1);
+        } else {
+            // console.log("d");
+            document.getElementById("table-inventory").parentElement.scrollTop = 0;
+            // console.trace();
+            // console.log(callback.toString());
+            callback();
+        }
+    }catch(err){
+        // console.log("e");
+        // console.error(err);
+    }
+    // console.log("end of scroll 2 func");
+}
+function show(node){
+    try{
+        var url = window.location.href.replaceAll(/\?.+/g,"/inventory?s=") + node.textContent;
+    }catch(error){
+        curr++;
+        if(curr >= count){
+            // console.log("showing inventory");
+            scroll(()=>{
+                getInfo([...Array.from(document.querySelectorAll("#table-inventory"))]);
+            });
+        }
+        return;
+    }
+    GM_xmlhttpRequest({
+        url:url,
+        method:"GET",
+        onload:function(data){
+            curr++;
+            node.style.float = "left";
+            try{
+                if(!(data.responseText.length < 4000)){
+                    node.innerHTML = data.responseText;
+                    node.innerHTML = node.firstChild.firstChild.nextElementSibling.firstChild.firstChild.outerHTML;
+                    Array.from(node.querySelectorAll("td")).forEach(e=>{
+                        e.style = "text-align: left;";
+                    });
+                }else{
+                    node.style = "text-align: left; background: red; color: black;";
+                }
+            }catch(err){
+                // console.error(err);
+                // console.log(data);
+            }
+            // console.log(`curr: ${curr}\ncount: ${count}`)
+            if(curr === count){
+                resizeColumns();
+                asins = [];
+                scroll(()=>{
+                    getInfo([...Array.from(document.querySelectorAll("#table-inventory"))]);
+                });
+
+            }
+        }
+    });
+}
+var asins = [], totalWeight, missingWeight = false;
+function getInfo(rows){
+    // console.log(rows);
+    rows.forEach(e=>{
+        asins.push(...(getInventory(e.rows) || getInventory(e.querySelector("#table-inventory").rows)));
+    });
+    asins = calculate(asins);
+    totalWeight = 0;
+    var count = asins.length, curr = 0;
+    asins.forEach(a=>{
+        a = a.split(",");
+        var url = window.location.href.replaceAll(/\?.+/g,"/product?s=") + a[0];
+        GM_xmlhttpRequest({
+            url:url,
+            method:"GET",
+            onload:function(resp){
+                curr++;
+                // console.log("processing results for "+a[0]);
+                resp = resp.responseText;
+                var span = document.createElement("span");
+                span.innerHTML = resp;
+                // try{
+                // Array.from(span.querySelector(`[data-row-id="${a[0]}"]`).querySelectorAll("th")).forEach(b=>{
+                //     if(b.textContent.includes("Weight")){
+                //         span = b.nextSibling;
+                //     }
+                // });
+                [...span.getElementsByTagName("table")].forEach(e=>{
+                    if(!!e.getAttribute("data-row-id")){
+                        Array.from(e.querySelectorAll("th")).forEach(b=>{
+                            if(b.textContent.includes("Weight")){
+                                span = b.nextSibling;
+                            }
+                        });
+                    }
+                })
+                // }catch(err){
+                //     console.log(span.querySelector(`[data-row-id=${a[0]}]`));
+                //     console.log(url);
+                //     console.log();
+                // }
+                // console.log("weight:" , span);
+                // console.log(parseFloat(span.textContent.split(" pounds")[0]));
+                var weightInfo = span.textContent.split(" ");
+                var units = weightInfo[1] || "unknown";
+                if(weightInfo.length < 2){
+                    weightInfo = [0,0];
+                    missingWeight = true;
+                }
+                totalWeight += (Math.floor(parseFloat(weightInfo[0]) * a[1] * 100) / 100)||0;
+                if(curr >= count){
+                    totalWeight = Math.floor(totalWeight * 100) / 100;
+                    infoArr.push(["Container Weight", `${totalWeight} ${units + (missingWeight?" (weight may be inaccurate as some<br>ASINs do not have a weight in FCResearch)":"")}`]);
+                    var containerInfo = document.createElement("div");
+                    containerInfo.innerHTML = `<div class="a-box-group a-spacing-large a-spacing-top-medium"><div class="a-box a-first a-box-title"><div class="a-box-inner"><div class="a-row a-grid-vertical-align a-grid-center"><div class="a-column a-span8">
+<ul class="a-unordered-list a-nostyle a-horizontal"><li><span class="a-list-item"><span class="a-size-large section-title a-text-bold">Container Info</span></span></li></ul></div><div class="a-column a-span4 a-text-right filter a-span-last"></div></div></div>
+</div><div class="a-box a-last"><div class="a-box-inner"><table style="width: 500px !important;" class="a-bordered a-horizontal-stripes dataTable" id="container-info-table"></table></div></div></div>`;
+                    var cur = 0;
+                    missingPrices = false;
+                    missingWeight = false
+                    asins.forEach(e=>{
+                        e = e.split(",");
+                        if(e==="asin"){return;}
+                        var url = window.location.href.replaceAll(/\?.+/g, "/product?s=") + e[0];
+                        GM_xmlhttpRequest({
+                            url:url,
+                            method:"GET",
+                            onload:function(resp){
+                                // console.log("processing results for ",e);
+                                // console.log(url);
+                                resp.responseText.replaceAll(/<th>List Price<\/th><td>.+<\/td>/g, text => {
+                                    con(text.replaceAll(/(<th>List Price<\/th>|<\/?..>)/g, ""), e);
+                                });
+                                cur++;
+                                if(cur >= count){
+                                    infoArr.push(["Container Cost", `${new Intl.NumberFormat('cs-CZ', { style: 'currency', currency: 'EUR' }).format(totalPrice)+(missingPrices?" (price may be inaccurate as some<br>ASINs do not have a price in FCResearch)":"")}`]);
+                                    infoArr.push(["Inventory",`<span style="display:block; max-height:500px; overflow: scroll;">${createTable(
+                                        [...asins.map(e=>{
+                                            e = e.split(",");
+                                            return [`<a href="${window.location.href.replaceAll(/\?.+/g, "?s=" + e[0])}">${e[0]}</a>`, e[1]];
+                                        })
+                                        ],
+                                        ["asin", "amount"]).outerHTML}</span>` ] );
+                                    containerInfo.querySelector("#container-info-table").append(createTable(infoArr, ["name", "value"]));
+                                    document.getElementById("inventory-history-nav").insertAdjacentElement('afterend',containerInfo);
+                                }
+                            }
+                        });
+                    });
+
+                }
+            }
+        });
+    });
+}//
+var totalPrice = 0, missingPrices = false;
+function con(price, asin){
+    price = parseFloat(price.replaceAll(/Expiration.+/g,"").replaceAll("EUR ",""));
+    var pr = price * asin[1];
+    pr = Math.round(pr*100)/100;
+    if(void(0) === pr){
+        missingPrices = true;
+    }
+    totalPrice += pr||(()=>{missingPrices = true; return 0})();
+    totalPrice = Math.round(totalPrice*100)/100;
+}
+var infoArr = [];
+function createTable(tableData, headers = []) {
+    var table = document.createElement("table");
+    // table.id = id;
+    table.classList.add("a-bordered");
+    table.classList.add("dataTable");
+    table.classList.add("a-horizontal-stripes");
+    var tableBody = document.createElement("tbody");
+    var r = document.createElement("tr");
+    r.classList.add("odd");
+    tableBody.appendChild(r);
+    if(headers.length > 0){
+        var tableHead = document.createElement('tbody');
+        var row = document.createElement('tr');
+        headers.forEach(function(cellData, n) {
+            row.classList.add( (n%2)===0?"odd":"even");
+            var cell = document.createElement('td');
+            // frame.style="all: initial;";
+            cell.innerHTML = cellData;
+            row.appendChild(cell);
+        });
+        tableHead.appendChild(row);
+        table.appendChild(tableHead);
+    }
+    tableData.forEach(function(rowData, n) {
+        var row = document.createElement('tr');
+        row.classList.add( (n%2)===0?"odd":"even");
+        rowData.forEach(function(cellData) {
+            var cell = document.createElement('td');
+            // frame.style="all: initial;";
+            cell.innerHTML = cellData;
+            row.appendChild(cell);
+        });
+        tableBody.appendChild(row);
+    });
+    table.appendChild(tableBody);
+    return table;
+}//convert 2d array to table without <table> tags
+var invArr;
+function getInventory(myData){
+    // console.log("getting inventory from",myData)
+    invArr = [];
+    for (var i = 1; i < myData.length; i++) {
+        var el = myData[i].children;
+        var my_el = [];
+        for (var j = 0; j < el.length; j++) {
+            my_el.push(el[j].innerText);
+        }
+        invArr.push(my_el);
+    }
+    // console.log(invArr)
+    var map = new Map();
+    invArr.forEach(e=>{
+        map.set(e[1]||e[2]||e[3]||e[4],map.get(e[1])+parseInt(e[5])||parseInt(e[5]));
+
+    });
+    var final = [];
+    for(var [key, value] of map){
+        final.push(key+","+value);
+    }
+
+    return final.sort();
+}//convert table rows to array and condense
+//extract inventory from table array
+var len;
+var totalUnits;
+function calculate(arr){
+    var output1 = [];
+    var output2 = [];
+    var map = new Map();
+    arr.forEach(e=>{
+        try{
+            e = e.split(",");
+        }catch(err){console.log("error:",e);}
+        if(e[0]!==""){
+            map.set(e[0],map.get(e[0]) + parseInt(e[1])||parseInt(e[1]));
+        }
+    });
+    var final = [];
+    // for(var i = 0; i < output1.length; i++){
+    //     final.push([output1[i],output2[i]].join(","))
+    // }
+    [...map].forEach((k, v)=>{
+        final.push(k+","+v);
+    });
+    len = final.length;
+    // console.log(final);
+    totalUnits = 0;
+    final.forEach(e=>{
+        totalUnits += parseInt(e.split(",")[1]);
+    });
+    return final.sort();
+}//condense "asin,amnt" array
+function resizeColumns(){
+    try{
+        if(!document.getElementById("table-container-hierarchy")){return;}
+        var a = Array.from(document.getElementById("table-container-hierarchy").rows);
+        a.shift();
+        var styles = [];
+        a.forEach(e=>{
+            try{
+                var headers = Array.from(e.firstChild.firstChild.rows[0].children);
+            }catch(err){return;}
+            headers.forEach((e, n)=>{
+                var width = parseInt(getComputedStyle(e).width.split("px")[0]);
+                if(width > (styles[n] || 0)){
+                    styles[n] = width;
+                }
+            });
+        });
+        a.forEach(e=>{
+            try{
+                var headers = Array.from(e.firstChild.firstChild.rows[0].children);
+            }catch(err){
+            }
+            headers.forEach((e, n)=>{
+                e.style.width = styles[n]+"px";
+                e.style["padding-top"] = "7px";
+                e.style["padding-bottom"] = "7px";
+                e.style["padding-right"] = "14px";
+                e.style["padding-left"] = "14px";
+            });
+        });
+        var div = document.getElementById("child-containers-scannable-id");
+        div.click();
+        div.click();
+    }catch(err){}
+}
